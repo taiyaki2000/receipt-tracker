@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>レシートトラッカー</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#f5e642" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="レシート" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      min-height: 100vh;
+      background: #0f0f0f;
+      color: #f0ece0;
+      font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .container { width: 100%; max-width: 480px; padding: 0 16px 60px; }
+    .header { padding: 48px 0 0; margin-bottom: 20px; }
+    .header h1 { font-size: 28px; font-weight: 900; letter-spacing: -1px; color: #f5e642; display: inline; }
+    .header span { font-size: 15px; color: #888; letter-spacing: 0.1em; margin-left: 8px; }
+    .header p { font-size: 12px; color: #555; margin-top: 4px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 3px; margin-bottom: 24px; }
+    .tab {
+      flex: 1; padding: 11px 0; border: none; border-radius: 10px;
+      font-size: 13px; cursor: pointer; transition: all 0.15s;
+      font-family: inherit;
+    }
+    .tab.active { background: #f5e642; color: #0f0f0f; font-weight: 700; }
+    .tab:not(.active) { background: #1a1a1a; color: #777; }
+
+    /* Upload zone */
+    .drop-zone {
+      border: 2px dashed #2a2a2a; border-radius: 16px;
+      padding: 52px 20px; text-align: center; cursor: pointer;
+      background: #111; transition: all 0.2s; margin-bottom: 20px;
+    }
+    .drop-zone.active { border-color: #f5e642; background: #1a1a00; }
+    .drop-zone .icon { font-size: 52px; margin-bottom: 14px; }
+    .drop-zone p { font-size: 15px; color: #bbb; line-height: 1.6; }
+    .drop-zone small { font-size: 12px; color: #555; }
+
+    /* Loading */
+    .loading { text-align: center; padding: 40px; }
+    .spinner { font-size: 36px; display: inline-block; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading p { color: #777; font-size: 14px; margin-top: 12px; }
+
+    /* Error */
+    .error-box { background: #1e0808; border: 1px solid #ff4444; border-radius: 10px; padding: 14px; font-size: 13px; color: #ff8888; margin-bottom: 16px; }
+
+    /* Result card */
+    .result-card { background: #141414; border-radius: 16px; padding: 20px; border: 1px solid #222; }
+    .result-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .store-name { font-size: 20px; font-weight: 800; color: #f5e642; }
+    .store-date { font-size: 13px; color: #666; margin-top: 4px; }
+    .items-list { border-top: 1px solid #222; padding-top: 14px; }
+    .item-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #1a1a1a; }
+    .item-name { font-size: 14px; }
+    .item-price { font-size: 14px; color: #f5e642; font-weight: 600; }
+    .total-row { display: flex; justify-content: space-between; padding-top: 14px; }
+    .total-label { color: #777; font-size: 14px; }
+    .total-amount { font-size: 20px; font-weight: 800; color: #fff; }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%; margin-top: 18px; padding: 15px;
+      background: #f5e642; color: #0f0f0f; border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:active { opacity: 0.8; }
+
+    /* Search */
+    .search-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .search-input {
+      flex: 1; padding: 14px 16px; background: #161616;
+      border: 1px solid #2a2a2a; border-radius: 12px;
+      color: #f0ece0; font-size: 15px; outline: none; font-family: inherit;
+    }
+    .search-input::placeholder { color: #444; }
+    .search-btn {
+      padding: 14px 20px; background: #f5e642; color: #0f0f0f;
+      border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+    }
+    .results-count { font-size: 13px; color: #666; margin-bottom: 12px; }
+
+    /* Item cards */
+    .item-card {
+      background: #141414; border-radius: 12px; padding: 14px 16px;
+      margin-bottom: 10px; border: 1px solid #1e1e1e;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .item-card-name { font-size: 15px; font-weight: 600; }
+    .item-card-sub { font-size: 12px; color: #666; margin-top: 3px; }
+    .item-card-price { font-size: 20px; font-weight: 800; color: #f5e642; }
+    .avg-box {
+      background: #181800; border-radius: 12px; padding: 12px 16px;
+      display: flex; justify-content: space-between; margin-top: 8px;
+    }
+    .avg-box span:first-child { color: #777; font-size: 14px; }
+    .avg-box span:last-child { color: #f5e642; font-weight: 700; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 52px 20px; color: #555; }
+    .empty .empty-icon { font-size: 44px; margin-bottom: 16px; }
+    .empty p { font-size: 14px; line-height: 1.7; }
+
+    /* Delete btn */
+    .del-btn { background: none; border: none; color: #444; cursor: pointer; font-size: 18px; padding: 4px 6px; }
+    .del-btn:active { color: #ff4444; }
+
+    /* Install banner */
+    .install-banner {
+      display: none;
+      background: #1a1a00; border: 1px solid #f5e642;
+      border-radius: 12px; padding: 14px 16px; margin-bottom: 20px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .install-banner.show { display: block; }
+    .install-banner strong { color: #f5e642; }
+    .install-btn {
+      margin-top: 10px; padding: 10px 16px; background: #f5e642;
+      color: #0f0f0f; border: none; border-radius: 8px; font-size: 13px;
+      font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>レシート</h1><span>TRACKER</span>
+    <p>レシートを撮影して家計を記録</p>
+  </div>
+
+  <!-- Install banner (Android Chrome) -->
+  <div class="install-banner" id="installBanner">
+    📲 <strong>ホーム画面に追加</strong>できます！<br>
+    ブラウザのメニュー →「ホーム画面に追加」をタップしてください。
+    <br><button class="install-btn" id="installBtn" style="display:none">インストール</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('scan')">📷 スキャン</button>
+    <button class="tab" onclick="switchTab('search')">🔍 検索</button>
+    <button class="tab" onclick="switchTab('list')">📋 一覧</button>
+  </div>
+
+  <!-- SCAN TAB -->
+  <div class="tab-content active" id="tab-scan">
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">🧾</div>
+      <p>レシートをタップして撮影</p>
+      <small>または画像をドロップ</small>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" />
+
+    <div class="loading" id="loading" style="display:none">
+      <div class="spinner">⟳</div>
+      <p>AIが解析中...</p>
+    </div>
+
+    <div class="error-box" id="errorBox" style="display:none"></div>
+
+    <div id="resultCard" style="display:none">
+      <div class="result-card">
+        <div class="result-header">
+          <div>
+            <div class="store-name" id="storeName"></div>
+            <div class="store-date" id="storeDate"></div>
+          </div>
+          <span style="font-size:28px">🏪</span>
+        </div>
+        <div class="items-list" id="itemsList"></div>
+        <div class="total-row">
+          <span class="total-label">合計</span>
+          <span class="total-amount" id="totalAmount"></span>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="saveResult()">💾 登録する</button>
+    </div>
+  </div>
+
+  <!-- SEARCH TAB -->
+  <div class="tab-content" id="tab-search">
+    <div class="search-row">
+      <input class="search-input" id="searchInput" placeholder="例：醤油、牛乳、パン..." />
+      <button class="search-btn" onclick="doSearch()">検索</button>
+    </div>
+    <div id="searchResults"></div>
+  </div>
+
+  <!-- LIST TAB -->
+  <div class="tab-content" id="tab-list">
+    <div id="listContent"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'receipt-items-v1';
+let currentResult = null;
+let deferredPrompt = null;
+
+// PWA install prompt
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBanner').classList.add('show');
+  document.getElementById('installBtn').style.display = 'inline-block';
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (outcome === 'accepted') document.getElementById('installBanner').style.display = 'none';
+  }
+});
+
+// iOS detection - show instructions
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+if (isIOS && !isStandalone) {
+  const banner = document.getElementById('installBanner');
+  banner.innerHTML = '📲 <strong>ホーム画面に追加</strong>できます！<br>Safariの <strong>共有ボタン（□↑）</strong> → 「ホーム画面に追加」をタップ';
+  banner.classList.add('show');
+}
+
+// Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// Storage
+function loadItems() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+}
+function saveItems(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+}
+
+// Tab switching
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['scan','search','list'][i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'list') renderList();
+}
+
+// File input
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) analyzeImage(e.target.files[0]);
+});
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('active'); if (e.dataTransfer.files[0]) analyzeImage(e.dataTransfer.files[0]); });
+
+async function analyzeImage(file) {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  currentResult = null;
+
+  try {
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } },
+            { type: 'text', text: 'このレシート画像から以下の情報をJSON形式で抽出してください。JSONのみを返し、説明文やコードブロック記号は不要です。\n{\n  "date": "YYYY-MM-DD形式の日付（不明な場合はnull）",\n  "time": "HH:MM形式の時刻（不明な場合はnull）",\n  "store": "店名",\n  "items": [\n    { "name": "商品名", "price": 数値（円） }\n  ]\n}' }
+          ]
+        }]
+      })
+    });
+
+    const data = await resp.json();
+    const text = data.content.map(b => b.text || '').join('');
+    currentResult = JSON.parse(text.replace(/```json|```/g, '').trim());
+    renderResult(currentResult);
+  } catch (e) {
+    const box = document.getElementById('errorBox');
+    box.textContent = '読み取りに失敗しました: ' + e.message;
+    box.style.display = 'block';
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+function renderResult(r) {
+  document.getElementById('storeName').textContent = r.store || '（店名不明）';
+  document.getElementById('storeDate').textContent = (r.date || '日付不明') + (r.time ? ' ' + r.time : '');
+  
+  const list = document.getElementById('itemsList');
+  list.innerHTML = r.items.map(i =>
+    `<div class="item-row"><span class="item-name">${i.name}</span><span class="item-price">¥${(i.price||0).toLocaleString()}</span></div>`
+  ).join('');
+  
+  const total = r.items.reduce((s, i) => s + (i.price || 0), 0);
+  document.getElementById('totalAmount').textContent = '¥' + total.toLocaleString();
+  document.getElementById('resultCard').style.display = 'block';
+}
+
+function saveResult() {
+  if (!currentResult) return;
+  const items = loadItems();
+  const newEntries = currentResult.items.map(item => ({
+    id: Date.now() + Math.random(),
+    date: currentResult.date,
+    time: currentResult.time,
+    store: currentResult.store,
+    name: item.name,
+    price: item.price,
+  }));
+  saveItems([...items, ...newEntries]);
+  currentResult = null;
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+
+  // Show success
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#0a1a00;border:1px solid #4caf50;border-radius:12px;padding:20px;text-align:center;font-size:15px;color:#81c784';
+  card.innerHTML = `✅ ${newEntries.length}件を登録しました！`;
+  const tab = document.getElementById('tab-scan');
+  tab.appendChild(card);
+  setTimeout(() => card.remove(), 3000);
+}
+
+function doSearch() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!q) return;
+  const all = loadItems();
+  const found = all.filter(i => i.name.toLowerCase().includes(q));
+  const div = document.getElementById('searchResults');
+
+  if (found.length === 0) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>「${q}」は見つかりませんでした</p></div>`;
+    return;
+  }
+
+  const avg = Math.round(found.reduce((s, i) => s + (i.price || 0), 0) / found.length);
+  div.innerHTML = `
+    <p class="results-count">「${q}」の検索結果 — ${found.length}件</p>
+    ${found.reverse().map(i => `
+      <div class="item-card">
+        <div>
+          <div class="item-card-name">${i.name}</div>
+          <div class="item-card-sub">${i.store || '店名不明'} · ${i.date || '日付不明'} ${i.time || ''}</div>
+        </div>
+        <div class="item-card-price">¥${(i.price||0).toLocaleString()}</div>
+      </div>
+    `).join('')}
+    ${found.length > 1 ? `<div class="avg-box"><span>平均価格</span><span>¥${avg.toLocaleString()}</span></div>` : ''}
+  `;
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+function renderList() {
+  const all = loadItems();
+  const div = document.getElementById('listContent');
+  if (all.length === 0) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>まだデータがありません<br>レシートをスキャンして登録しましょう</p></div>`;
+    return;
+  }
+  div.innerHTML = `
+    <p class="results-count">登録済み: ${all.length}件</p>
+    ${[...all].reverse().map(i => `
+      <div class="item-card">
+        <div>
+          <div class="item-card-name">${i.name}</div>
+          <div class="item-card-sub">${i.store || ''} · ${i.date || ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="item-card-price" style="font-size:16px">¥${(i.price||0).toLocaleString()}</span>
+          <button class="del-btn" onclick="deleteItem('${i.id}')">✕</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function deleteItem(id) {
+  const items = loadItems().filter(i => String(i.id) !== String(id));
+  saveItems(items);
+  renderList();
+}
+</script>
+</body>
+</html>
